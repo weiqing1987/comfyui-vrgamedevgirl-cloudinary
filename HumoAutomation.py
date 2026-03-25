@@ -2707,17 +2707,17 @@ class VRGDG_CreateFinalVideo_SRT:
 
                 # Cloudinary Upload Settings
                 "enable_cloudinary": ("BOOLEAN", {"default": False}),
-                "cloudinary_cloud_name": ("STRING", {"default": "dftco0cki", "multiline": False}),
-                "cloudinary_api_key": ("STRING", {"default": "192422146789215", "multiline": False}),
-                "cloudinary_api_secret": ("STRING", {"default": "HKcrrpmDGP2u0qimbuweYxfnlt4", "multiline": True}),
+                "cloudinary_cloud_name": ("STRING", {"default": "", "multiline": False}),
+                "cloudinary_api_key": ("STRING", {"default": "", "multiline": False}),
+                "cloudinary_api_secret": ("STRING", {"default": "", "multiline": True}),
             }
         }
 
     def create_final(self, trigger, audio, threshold, group_list, video_folder,
                      enable_cloudinary=False,
-                     cloudinary_cloud_name="dftco0cki",
-                     cloudinary_api_key="192422146789215",
-                     cloudinary_api_secret="HKcrrpmDGP2u0qimbuweYxfnlt4"):
+                     cloudinary_cloud_name="",
+                     cloudinary_api_key="",
+                     cloudinary_api_secret=""):
         video_folder = video_folder.strip()
 
         if not os.path.isabs(video_folder):

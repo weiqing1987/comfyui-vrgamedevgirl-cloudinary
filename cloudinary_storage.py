@@ -255,11 +255,13 @@ def get_storage(enabled: bool = True) -> CloudinaryStorage:
 def upload_video_to_cloudinary(
     file_path: str,
     folder: str = "vrgamedevgirl/videos",
-    cloud_name: str = "dftco0cki",
-    api_key: str = "192422146789215",
-    api_secret: str = "HKcrrpmDGP2u0qimbuweYxfnlt4"
+    cloud_name: str = "",
+    api_key: str = "",
+    api_secret: str = ""
 ) -> Dict[str, Any]:
     """Quick function to upload a video to Cloudinary"""
+    if not cloud_name or not api_key or not api_secret:
+        raise ValueError("Cloudinary credentials required. Please provide cloud_name, api_key, and api_secret.")
     storage = CloudinaryStorage(cloud_name, api_key, api_secret, enabled=True)
     return storage.upload_video(file_path, folder)
 
@@ -267,10 +269,12 @@ def upload_video_to_cloudinary(
 def upload_audio_to_cloudinary(
     file_path: str,
     folder: str = "vrgamedevgirl/audio",
-    cloud_name: str = "dftco0cki",
-    api_key: str = "192422146789215",
-    api_secret: str = "HKcrrpmDGP2u0qimbuweYxfnlt4"
+    cloud_name: str = "",
+    api_key: str = "",
+    api_secret: str = ""
 ) -> Dict[str, Any]:
     """Quick function to upload an audio to Cloudinary"""
+    if not cloud_name or not api_key or not api_secret:
+        raise ValueError("Cloudinary credentials required. Please provide cloud_name, api_key, and api_secret.")
     storage = CloudinaryStorage(cloud_name, api_key, api_secret, enabled=True)
     return storage.upload_audio(file_path, folder)

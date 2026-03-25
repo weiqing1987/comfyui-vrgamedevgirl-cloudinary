@@ -204,9 +204,11 @@ Upload audio files to Cloudinary storage.
 1. Go to [Cloudinary Console](https://console.cloudinary.com/)
 2. Sign up or log in
 3. Find your credentials in the Dashboard:
-   - **Cloud Name** (e.g., `dftco0cki`)
-   - **API Key** (e.g., `192422146789215`)
-   - **API Secret** (e.g., `HKcrrpmDGP2u0qimbuweYxfnlt4`)
+   - **Cloud Name** (e.g., `your_cloud_name`)
+   - **API Key** (e.g., `123456789012345`)
+   - **API Secret** (e.g., `abcdefghijklmnopqrstuvwxyz123456`)
+
+⚠️ **Security Notice:** Never commit your API credentials to public repositories. Always enter them directly in ComfyUI node widgets or use environment variables.
 
 ### Free Tier Limits
 
