@@ -7,6 +7,16 @@ Includes HUMO-based multi-scene workflows, audio splitting, video combining, and
 
 ---
 
+## 🙏 Acknowledgements
+
+This project is a fork of the original **[comfyui-vrgamedevgirl](https://github.com/vrgamegirl19/comfyui-vrgamedevgirl)** by **VRGameDevGirl**.
+
+Special thanks to the original author for creating the amazing base nodes and workflows that made this Cloudinary integration possible.
+
+**Original Project:** https://github.com/vrgamegirl19/comfyui-vrgamedevgirl
+
+---
+
 # 🎬 AI Music Video Workflow (ComfyUI)
 
 Turn a **reference image** and an **audio track** into a fully **AI-generated music video**.
