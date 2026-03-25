@@ -17,6 +17,15 @@ import random
 import tempfile
 from .video_preroll import add_preroll_frames
 
+# Cloudinary integration
+try:
+    from .cloudinary_storage import upload_video_to_cloudinary, get_storage
+    CLOUDINARY_AVAILABLE = True
+except ImportError:
+    CLOUDINARY_AVAILABLE = False
+    upload_video_to_cloudinary = None
+    get_storage = None
+
 
 
 
@@ -1030,7 +1039,7 @@ class VRGDG_LoadAudioSplit_General:
         "STRING",   # output_folder
         "STRING",    #overwrite
     ) + ("AUDIO",) + (any_typ,)
-    
+
     RETURN_NAMES = (
         "meta",
         "total_duration",
@@ -1063,8 +1072,8 @@ class VRGDG_LoadAudioSplit_General:
                     "default": 24,
                     "min": 1
                 }),
-                
-                
+
+
                 "folder_path": ("STRING", {
                     "multiline": False,
                     "default": "VRGDG_Video"
@@ -1656,7 +1665,7 @@ class VRGDG_LoadAudioSplit_General:
             instructions,
             total_sets,
             frames_per_scene,     # <-- audio + timing truth
-            preroll_frames,            
+            preroll_frames,
             audio_meta,
             output_folder,
             overwrite_mode,
@@ -2980,10 +2989,218 @@ class VRGDG_LatestSRTAutoLoader:
         return (latest_path, latest_name)
 
 
+class VRGDG_UploadVideoToCloudinary:
+    """
+    Upload video to Cloudinary storage.
+    Returns the Cloudinary URL and public_id for the uploaded video.
+    """
+    RETURN_TYPES = ("STRING", "STRING", "BOOLEAN")
+    RETURN_NAMES = ("cloudinary_url", "public_id", "upload_success")
+    FUNCTION = "upload"
+    CATEGORY = "VRGDG/Video"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "video_path": ("STRING", {"default": "", "multiline": False}),
+                "video_name": ("STRING", {"default": "video", "multiline": False}),
+                "upload_enabled": ("BOOLEAN", {"default": True}),
+                # Cloudinary settings
+                "cloudinary_cloud_name": ("STRING", {"default": "dftco0cki", "multiline": False}),
+                "cloudinary_api_key": ("STRING", {"default": "192422146789215", "multiline": False}),
+                "cloudinary_api_secret": ("STRING", {"default": "HKcrrpmDGP2u0qimbuweYxfnlt4", "multiline": True}),
+            }
+        }
+
+    def upload(self, video_path, video_name="video", upload_enabled=True,
+               cloudinary_cloud_name="dftco0cki",
+               cloudinary_api_key="192422146789215",
+               cloudinary_api_secret="HKcrrpmDGP2u0qimbuweYxfnlt4"):
+        if not CLOUDINARY_AVAILABLE:
+            print("[VRGDG_UploadVideoToCloudinary] Cloudinary module not available")
+            return ("", "", False)
+
+        if not upload_enabled:
+            return ("", "", False)
+
+        if not video_path or not os.path.exists(video_path):
+            print(f"[VRGDG_UploadVideoToCloudinary] Video file not found: {video_path}")
+            return ("", "", False)
+
+        try:
+            # Upload to Cloudinary
+            safe_name = re.sub(r'[<>:"/\\|?*]', '_', video_name)
+            result = upload_video_to_cloudinary(
+                video_path,
+                folder=f"vrgamedevgirl/videos/{safe_name}",
+                cloud_name=cloudinary_cloud_name,
+                api_key=cloudinary_api_key,
+                api_secret=cloudinary_api_secret
+            )
+
+            if result.get("success"):
+                url = result.get("url", "")
+                public_id = result.get("public_id", "")
+                print(f"[VRGDG_UploadVideoToCloudinary] Uploaded: {url}")
+                return (url, public_id, True)
+            else:
+                error = result.get("error", "Unknown error")
+                print(f"[VRGDG_UploadVideoToCloudinary] Upload failed: {error}")
+                return ("", "", False)
+
+        except Exception as e:
+            print(f"[VRGDG_UploadVideoToCloudinary] Error: {e}")
+            return ("", "", False)
+
+
+class VRGDG_UploadVideoToCloudinary_Auto:
+    """
+    Auto-upload video to Cloudinary after Video Combine.
+    Takes VHS_FILENAMES trigger to ensure Video Combine finished.
+    Automatically finds the latest video file and uploads it.
+
+    用于 RunningHub：视频生成后自动上传到 Cloudinary，输出 URL。
+    """
+    RETURN_TYPES = ("STRING", "STRING", "BOOLEAN", "STRING")
+    RETURN_NAMES = ("cloudinary_url", "public_id", "upload_success", "local_path")
+    FUNCTION = "upload"
+    CATEGORY = "VRGDG/Video"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "trigger": ("VHS_FILENAMES", {
+                    "tooltip": "Connect from Video Combine output - ensures video is saved first"
+                }),
+                "output_folder": ("STRING", {"default": "", "multiline": False}),
+                "video_name_prefix": ("STRING", {"default": "video", "multiline": False}),
+                "upload_enabled": ("BOOLEAN", {"default": True}),
+            }
+        }
+
+    def upload(self, trigger, output_folder, video_name_prefix="video", upload_enabled=True):
+        if not CLOUDINARY_AVAILABLE:
+            print("[VRGDG_UploadVideoToCloudinary_Auto] Cloudinary module not available")
+            return ("", "", False, "")
+
+        if not upload_enabled:
+            return ("", "", False, "")
+
+        # Extract folder path from trigger (VHS_FILENAMES format: [path, [files]])
+        # VHS_FILENAMES is typically a list: [folder_path, [file1, file2, ...]]
+        actual_folder = ""
+
+        if trigger:
+            if isinstance(trigger, (list, tuple)) and len(trigger) >= 2:
+                # Format: [folder_path, [filenames]]
+                actual_folder = trigger[0] if isinstance(trigger[0], str) else str(trigger[0])
+                print(f"[VRGDG_UploadVideoToCloudinary_Auto] Extracted folder from VHS_FILENAMES: {actual_folder}")
+            elif isinstance(trigger, str):
+                actual_folder = trigger
+                print(f"[VRGDG_UploadVideoToCloudinary_Auto] Using trigger as folder: {actual_folder}")
+
+        # Fallback to output_folder parameter if trigger didn't provide a path
+        if not actual_folder and output_folder:
+            actual_folder = output_folder
+            print(f"[VRGDG_UploadVideoToCloudinary_Auto] Using output_folder parameter: {actual_folder}")
+
+        if not actual_folder or not os.path.exists(actual_folder):
+            print(f"[VRGDG_UploadVideoToCloudinary_Auto] Folder not found: {actual_folder}")
+            return ("", "", False, "")
+
+        # Find latest video file in folder
+        files = [
+            f for f in os.listdir(actual_folder)
+            if f.startswith(video_name_prefix + "_") and f.endswith(".mp4")
+        ]
+
+        if not files:
+            # Try any mp4 file
+            files = [f for f in os.listdir(actual_folder) if f.endswith(".mp4")]
+
+        if not files:
+            print(f"[VRGDG_UploadVideoToCloudinary_Auto] No video files found in {actual_folder}")
+            return ("", "", False, "")
+
+        # Get latest file by index number
+        def get_index(filename):
+            match = re.search(r"_(\d{4})", filename)
+            return int(match.group(1)) if match else 0
+
+        files.sort(key=get_index, reverse=True)
+        latest_file = files[0]
+        video_path = os.path.join(actual_folder, latest_file)
+
+        print(f"[VRGDG_UploadVideoToCloudinary_Auto] Found video: {video_path}")
+
+        try:
+            # Upload to Cloudinary with credentials from config
+            safe_name = re.sub(r'[<>:"/\\|?*]', '_', video_name_prefix)
+            result = upload_video_to_cloudinary(
+                video_path,
+                folder=f"vrgamedevgirl/videos/{safe_name}",
+                cloud_name=cloud_name,
+                api_key=api_key,
+                api_secret=api_secret
+            )
+
+            if result.get("success"):
+                url = result.get("url", "")
+                public_id = result.get("public_id", "")
+                print(f"[VRGDG_UploadVideoToCloudinary_Auto] Uploaded: {url}")
+                return (url, public_id, True, video_path)
+            else:
+                error = result.get("error", "Unknown error")
+                print(f"[VRGDG_UploadVideoToCloudinary_Auto] Upload failed: {error}")
+                return ("", "", False, video_path)
+
+        except Exception as e:
+            print(f"[VRGDG_UploadVideoToCloudinary_Auto] Error: {e}")
+            return ("", "", False, video_path)
+
+
+class VRGDG_CloudinaryConfig:
+    """
+    Cloudinary Configuration Node for RunningHub.
+    Output cloud_name, api_key, api_secret as a config dictionary.
+
+    用于 RunningHub：在后台配置 Cloudinary 参数，其他节点通过连接获取配置。
+    """
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING")
+    RETURN_NAMES = ("cloud_name", "api_key", "api_secret", "x_api_key", "config_json")
+    FUNCTION = "get_config"
+    CATEGORY = "VRGDG/Cloudinary"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "cloud_name": ("STRING", {"default": "dftco0cki", "multiline": False}),
+                "api_key": ("STRING", {"default": "192422146789215", "multiline": False}),
+                "api_secret": ("STRING", {"default": "HKcrrpmDGP2u0qimbuweYxfnlt4", "multiline": True}),
+                "x_api_key": ("STRING", {"default": "", "multiline": True, "placeholder": "Optional: Cloudinary X-API-Key for admin operations"}),
+            }
+        }
+
+    def get_config(self, cloud_name, api_key, api_secret, x_api_key=""):
+        import json
+        config = {
+            "cloud_name": cloud_name,
+            "api_key": api_key,
+            "api_secret": api_secret,
+            "x_api_key": x_api_key
+        }
+        config_json = json.dumps(config)
+        print(f"[VRGDG_CloudinaryConfig] Config loaded for cloud: {cloud_name}")
+        return (cloud_name, api_key, api_secret, x_api_key, config_json)
+
+
 NODE_CLASS_MAPPINGS = {
     "VRGDG_LoadAudioSplit_General": VRGDG_LoadAudioSplit_General,
     "VRGDG_BuildVideoOutputPath_General": VRGDG_BuildVideoOutputPath_General,
-    "VRGDG_BuildVideoOutputPath_General_SRT": VRGDG_BuildVideoOutputPath_General_SRT,    
+    "VRGDG_BuildVideoOutputPath_General_SRT": VRGDG_BuildVideoOutputPath_General_SRT,
     "VRGDG_TrimFinalClip":VRGDG_TrimFinalClip,
     "VRGDG_PromptSplitter_General":VRGDG_PromptSplitter_General,
     "VRGDG_PadVideoWithLastFrame":VRGDG_PadVideoWithLastFrame,
@@ -2995,16 +3212,15 @@ NODE_CLASS_MAPPINGS = {
     "IndexedImageFromFolder_ForRemakeMode": IndexedImageFromFolder_ForRemakeMode,
     "VRGDG_PromptSpitterWithIndex":VRGDG_PromptSplitterWithIndex,
     "VRGDG_LatestSRTAutoLoader": VRGDG_LatestSRTAutoLoader,
-    
-    
-
-
+    "VRGDG_UploadVideoToCloudinary": VRGDG_UploadVideoToCloudinary,
+    "VRGDG_UploadVideoToCloudinary_Auto": VRGDG_UploadVideoToCloudinary_Auto,
+    "VRGDG_CloudinaryConfig": VRGDG_CloudinaryConfig,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_LoadAudioSplit_General": "VRGDG Load Audio Split (General)",
     "VRGDG_BuildVideoOutputPath_General": "VRGDG Build Video Output Path (General)",
-    "VRGDG_BuildVideoOutputPath_General_SRT": "VRGDG Build Video Output Path (General_SRT)",    
+    "VRGDG_BuildVideoOutputPath_General_SRT": "VRGDG Build Video Output Path (General_SRT)",
     "VRGDG_TrimFinalClip":"VRGDG_TrimFinalClip",
     "VRGDG_PromptSplitter_General":"VRGDG_PromptSplitter_General",
     "VRGDG_PadVideoWithLastFrame":"VRGDG_PadVideoWithLastFrame",
@@ -3016,11 +3232,9 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "IndexedImageFromFolder_ForRemakeMode": "Image From Folder (Index For Remake Mode)",
     "VRGDG_PromptSplitterWithIndex":"VRGDG_PromptSplitterWithIndex",
     "VRGDG_LatestSRTAutoLoader": "VRGDG Latest SRT Auto Loader",
-    
-
-
-
-
+    "VRGDG_UploadVideoToCloudinary": "VRGDG Upload Video to Cloudinary",
+    "VRGDG_UploadVideoToCloudinary_Auto": "VRGDG Upload Video to Cloudinary (Auto)",
+    "VRGDG_CloudinaryConfig": "☁️ VRGDG Cloudinary Config (for RunningHub)",
 }
 
 

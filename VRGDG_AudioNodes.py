@@ -20,6 +20,15 @@ except Exception:
     pretrained = None
     apply_model = None
 
+# Cloudinary integration
+try:
+    from .cloudinary_storage import upload_audio_to_cloudinary, get_storage
+    CLOUDINARY_AVAILABLE = True
+except ImportError:
+    CLOUDINARY_AVAILABLE = False
+    upload_audio_to_cloudinary = None
+    get_storage = None
+
 
 class VRGDG_GetStems:
     RETURN_TYPES = ("AUDIO", "AUDIO", "AUDIO", "AUDIO")
@@ -529,12 +538,97 @@ def _ensure_audio_routes_registered():
 _ensure_audio_routes_registered()
 
 
+class VRGDG_UploadAudioToCloudinary:
+    """
+    Upload audio to Cloudinary storage.
+    Returns the Cloudinary URL and public_id for the uploaded audio.
+    """
+    RETURN_TYPES = ("STRING", "STRING", "BOOLEAN")
+    RETURN_NAMES = ("cloudinary_url", "public_id", "upload_success")
+    FUNCTION = "upload"
+    CATEGORY = "VRGDG/Audio"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "audio": ("AUDIO",),
+                "audio_name": ("STRING", {"default": "audio", "multiline": False}),
+                "upload_enabled": ("BOOLEAN", {"default": True}),
+            }
+        }
+
+    def upload(self, audio, audio_name="audio", upload_enabled=True):
+        if not CLOUDINARY_AVAILABLE:
+            print("[VRGDG_UploadAudioToCloudinary] Cloudinary module not available")
+            return ("", "", False)
+
+        if not upload_enabled:
+            return ("", "", False)
+
+        waveform = audio.get("waveform") if isinstance(audio, dict) else None
+        sample_rate = audio.get("sample_rate") if isinstance(audio, dict) else None
+
+        if waveform is None or sample_rate is None:
+            print("[VRGDG_UploadAudioToCloudinary] Invalid audio input")
+            return ("", "", False)
+
+        if not isinstance(waveform, torch.Tensor):
+            waveform = torch.as_tensor(waveform)
+
+        if waveform.ndim == 3:
+            waveform = waveform[0]
+        elif waveform.ndim == 1:
+            waveform = waveform.unsqueeze(0)
+        if waveform.ndim != 2:
+            print(f"[VRGDG_UploadAudioToCloudinary] Invalid waveform shape: {waveform.shape}")
+            return ("", "", False)
+
+        # Save to temp file first
+        import tempfile
+        temp_dir = tempfile.gettempdir()
+        safe_name = re.sub(r'[<>:"/\\|?*]', '_', audio_name)
+        temp_path = os.path.join(temp_dir, f"{safe_name}.mp3")
+
+        try:
+            torchaudio.save(temp_path, waveform.detach().cpu(), int(sample_rate), format="mp3")
+
+            # Upload to Cloudinary
+            result = upload_audio_to_cloudinary(
+                temp_path,
+                folder=f"vrgamedevgirl/audio/{safe_name}"
+            )
+
+            if result.get("success"):
+                url = result.get("url", "")
+                public_id = result.get("public_id", "")
+                print(f"[VRGDG_UploadAudioToCloudinary] Uploaded: {url}")
+                return (url, public_id, True)
+            else:
+                error = result.get("error", "Unknown error")
+                print(f"[VRGDG_UploadAudioToCloudinary] Upload failed: {error}")
+                return ("", "", False)
+
+        except Exception as e:
+            print(f"[VRGDG_UploadAudioToCloudinary] Error: {e}")
+            return ("", "", False)
+
+        finally:
+            # Clean up temp file
+            if os.path.exists(temp_path):
+                try:
+                    os.remove(temp_path)
+                except OSError:
+                    pass
+
+
 NODE_CLASS_MAPPINGS = {
     "VRGDG_GetStems": VRGDG_GetStems,
     "VRGDG_LoadAudioWithPath": VRGDG_LoadAudioWithPath,
     "VRGDG_CreateSilentAudio": VRGDG_CreateSilentAudio,
     "VRGDG_SaveAudio": VRGDG_SaveAudio,
     "VRGDG_GetAudioFilePath": VRGDG_GetAudioFilePath,
+    "VRGDG_UploadAudioToCloudinary": VRGDG_UploadAudioToCloudinary,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -543,6 +637,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_CreateSilentAudio": "VRGDG_CreateSilentAudio",
     "VRGDG_SaveAudio": "VRGDG_SaveAudio",
     "VRGDG_GetAudioFilePath": "VRGDG_GetAudioFilePath",
+    "VRGDG_UploadAudioToCloudinary": "VRGDG Upload Audio to Cloudinary",
 }
 
 

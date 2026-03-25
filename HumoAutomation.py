@@ -13,6 +13,24 @@ from torch import Tensor
 from server import PromptServer
 from torchaudio.transforms import Vad
 
+# Cloudinary integration
+try:
+    from .cloudinary_storage import upload_video_to_cloudinary, CloudinaryStorage
+    CLOUDINARY_AVAILABLE = True
+except ImportError:
+    CLOUDINARY_AVAILABLE = False
+    upload_video_to_cloudinary = None
+    CloudinaryStorage = None
+
+# Cloudinary integration
+try:
+    from .cloudinary_storage import upload_video_to_cloudinary, get_storage
+    CLOUDINARY_AVAILABLE = True
+except ImportError:
+    CLOUDINARY_AVAILABLE = False
+    upload_video_to_cloudinary = None
+    get_storage = None
+
 #########################
 import subprocess
 
@@ -2686,10 +2704,20 @@ class VRGDG_CreateFinalVideo_SRT:
                 "threshold": ("INT", {"default": 3}),
                 "group_list": ("STRING", {"default": "-1"}),
                 "video_folder": ("STRING", {"default": "video_output", "multiline": False}),
+
+                # Cloudinary Upload Settings
+                "enable_cloudinary": ("BOOLEAN", {"default": False}),
+                "cloudinary_cloud_name": ("STRING", {"default": "dftco0cki", "multiline": False}),
+                "cloudinary_api_key": ("STRING", {"default": "192422146789215", "multiline": False}),
+                "cloudinary_api_secret": ("STRING", {"default": "HKcrrpmDGP2u0qimbuweYxfnlt4", "multiline": True}),
             }
         }
 
-    def create_final(self, trigger, audio, threshold, group_list, video_folder):
+    def create_final(self, trigger, audio, threshold, group_list, video_folder,
+                     enable_cloudinary=False,
+                     cloudinary_cloud_name="dftco0cki",
+                     cloudinary_api_key="192422146789215",
+                     cloudinary_api_secret="HKcrrpmDGP2u0qimbuweYxfnlt4"):
         video_folder = video_folder.strip()
 
         if not os.path.isabs(video_folder):
@@ -2886,10 +2914,44 @@ class VRGDG_CreateFinalVideo_SRT:
         os.remove(temp_video)
         os.remove(temp_audio)
 
+        # -------------------------------------------------
+        # Upload to Cloudinary (NEW)
+        # -------------------------------------------------
+        cloudinary_url = ""
+        upload_success = False
+
+        if enable_cloudinary and CLOUDINARY_AVAILABLE:
+            try:
+                print(f"[Cloudinary] Uploading final video to Cloudinary...")
+                result = upload_video_to_cloudinary(
+                    final_output,
+                    folder=f"vrgamedevgirl/final_videos",
+                    cloud_name=cloudinary_cloud_name,
+                    api_key=cloudinary_api_key,
+                    api_secret=cloudinary_api_secret
+                )
+                if result.get("success"):
+                    cloudinary_url = result.get("url", "")
+                    upload_success = True
+                    print(f"[Cloudinary] ✅ Uploaded: {cloudinary_url}")
+                else:
+                    print(f"[Cloudinary] Upload failed: {result.get('error')}")
+            except Exception as e:
+                print(f"[Cloudinary] Upload error: {e}")
+        elif enable_cloudinary and not CLOUDINARY_AVAILABLE:
+            print("[Cloudinary] Module not available. Install with: pip install cloudinary")
+
         from server import PromptServer
+
+        # Add Cloudinary URL to popup if upload was successful
+        cloudinary_msg = ""
+        if upload_success:
+            cloudinary_msg = f"\n\n☁️ Cloudinary URL:\n{cloudinary_url}"
+
         message = (
             f"🎉 Final video created!\n\n"
-            f"📁 Location:\n{final_output}\n\n"
+            f"📁 Location:\n{final_output}"
+            f"{cloudinary_msg}\n\n"
             f"✅ {video_count} sets combined\n"
             f"✅ Original clean audio added"
         )
@@ -2900,6 +2962,8 @@ class VRGDG_CreateFinalVideo_SRT:
         })
 
         print(f"✅ [CreateFinalVideo] SUCCESS! Final video saved: {final_output}")
+        if upload_success:
+            print(f"✅ [Cloudinary] Uploaded to: {cloudinary_url}")
 
         return ()
 
@@ -3270,9 +3334,64 @@ class VRGDG_LoadAudioSplit_Wan22HumoFMML:
             *tuple(segments),
             any_typ
         )
-    
-NODE_CLASS_MAPPINGS = {
 
+
+class VRGDG_UploadVideoToCloudinary_Humo:
+    """
+    Upload video to Cloudinary storage (Humo Automation version).
+    Returns the Cloudinary URL and public_id for the uploaded video.
+    """
+    RETURN_TYPES = ("STRING", "STRING", "BOOLEAN")
+    RETURN_NAMES = ("cloudinary_url", "public_id", "upload_success")
+    FUNCTION = "upload"
+    CATEGORY = "VRGDG/Humo"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "video_path": ("STRING", {"default": "", "multiline": False}),
+                "video_name": ("STRING", {"default": "video", "multiline": False}),
+                "upload_enabled": ("BOOLEAN", {"default": True}),
+            }
+        }
+
+    def upload(self, video_path, video_name="video", upload_enabled=True):
+        if not CLOUDINARY_AVAILABLE:
+            print("[VRGDG_UploadVideoToCloudinary_Humo] Cloudinary module not available")
+            return ("", "", False)
+
+        if not upload_enabled:
+            return ("", "", False)
+
+        if not video_path or not os.path.exists(video_path):
+            print(f"[VRGDG_UploadVideoToCloudinary_Humo] Video file not found: {video_path}")
+            return ("", "", False)
+
+        try:
+            # Upload to Cloudinary
+            safe_name = re.sub(r'[<>:"/\\|?*]', '_', video_name)
+            result = upload_video_to_cloudinary(
+                video_path,
+                folder=f"vrgamedevgirl/videos/{safe_name}"
+            )
+
+            if result.get("success"):
+                url = result.get("url", "")
+                public_id = result.get("public_id", "")
+                print(f"[VRGDG_UploadVideoToCloudinary_Humo] Uploaded: {url}")
+                return (url, public_id, True)
+            else:
+                error = result.get("error", "Unknown error")
+                print(f"[VRGDG_UploadVideoToCloudinary_Humo] Upload failed: {error}")
+                return ("", "", False)
+
+        except Exception as e:
+            print(f"[VRGDG_UploadVideoToCloudinary_Humo] Error: {e}")
+            return ("", "", False)
+
+
+NODE_CLASS_MAPPINGS = {
      "VRGDG_CombinevideosV2": VRGDG_CombinevideosV2,
      "VRGDG_PromptSplitter":VRGDG_PromptSplitter,
      "VRGDG_TimecodeFromIndex":VRGDG_TimecodeFromIndex,
@@ -3296,13 +3415,9 @@ NODE_CLASS_MAPPINGS = {
      "VRGDG_CleanAudio":VRGDG_CleanAudio,
      "VRGDG_MusicVideoPromptCreatorV2":VRGDG_MusicVideoPromptCreatorV2,
      "VRGDG_CreateFinalVideo":VRGDG_CreateFinalVideo,
-     "VRGDG_CreateFinalVideo_SRT":VRGDG_CreateFinalVideo_SRT,         
-     "VRGDG_LoadAudioSplit_Wan22HumoFMML":VRGDG_LoadAudioSplit_Wan22HumoFMML    
-
- 
-
-
-
+     "VRGDG_CreateFinalVideo_SRT":VRGDG_CreateFinalVideo_SRT,
+     "VRGDG_LoadAudioSplit_Wan22HumoFMML":VRGDG_LoadAudioSplit_Wan22HumoFMML,
+     "VRGDG_UploadVideoToCloudinary_Humo": VRGDG_UploadVideoToCloudinary_Humo,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -3329,9 +3444,9 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_CleanAudio":"VRGDG_CleanAudio",
     "VRGDG_MusicVideoPromptCreatorV2":"VRGDG_MusicVideoPromptCreatorV2",
     "VRGDG_CreateFinalVideo":"VRGDG_CreateFinalVideo",
-    "VRGDG_CreateFinalVideo_SRT":"VRGDG_CreateFinalVideo_SRT",     
-    "VRGDG_LoadAudioSplit_Wan22HumoFMML":"VRGDG_LoadAudioSplit_Wan22HumoFMML"    
-
+    "VRGDG_CreateFinalVideo_SRT":"VRGDG_CreateFinalVideo_SRT",
+    "VRGDG_LoadAudioSplit_Wan22HumoFMML":"VRGDG_LoadAudioSplit_Wan22HumoFMML",
+    "VRGDG_UploadVideoToCloudinary_Humo": "☁️ VRGDG Upload Video to Cloudinary (Humo)",
 }
 
 

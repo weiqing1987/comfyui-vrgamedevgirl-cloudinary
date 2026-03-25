@@ -64,26 +64,55 @@ The result: a stylized, synced **AI-driven music video**.
 
 ## ✨ Requirements
 
-A `requirements.txt` file is now needed.
+### ⚠️ Important: ComfyUI Manager Required
+This node pack requires **ComfyUI Manager** to be installed. Install it using:
+
+```bash
+pip install -U --pre comfyui-manager
+```
+
+Or if using embedded Python:
+```bash
+python_embeded/python.exe -m pip install -U --pre comfyui-manager
+```
+
+### Required Packages
+A `requirements.txt` file is now included.
 
 To install the required packages, run this from inside the `python_embeded` folder:
 
-```
+```bash
 python.exe -m pip install -r ..\custom_nodes\comfyui-vrgamedevgirl\requirements.txt
-
 ```
 
-`requirements.txt` (in the repo) includes:
-
+### Optional: Cloudinary SDK
+If you want to upload videos to Cloudinary cloud storage:
+```bash
+pip install cloudinary
 ```
 
+---
+
+## 📦 requirements.txt
+
+Current required packages:
+
+```
 kornia
-
 librosa
-
 imageio
-
+torchcodec
+google-generativeai
+av
+stable-ts
+demucs
+transformers
+accelerate
+huggingface_hub
+cloudinary
 ```
+
+---
 
 ## 🧠 Node Details
 
